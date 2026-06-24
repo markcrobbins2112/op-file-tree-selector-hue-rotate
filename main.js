@@ -6,10 +6,12 @@ module.exports = class FileTreeSelectorHueRotatePlugin extends Plugin {
     this.hoverOverlayEl = null;
     this.activeOverlayEl = null;
     this.activeElementTracker = null;
+    this.lastHoveredRow = null;
+    this.positionPollIntervalId = null;
   }
 
   async onload() {
-    console.log('%c[Selector Hue Rotate]%c Initializing Floating Body-Child Overlay Engine...', 'color: #a4b0be; font-weight: bold;', 'color: default;');
+    console.log('%c[Selector Hue Rotate]%c Initializing High-Frequency Overlay Engine...', 'color: #a4b0be; font-weight: bold;', 'color: default;');
 
     // 1. Inject the required baseline layout resets and direct border color animations
     this.injectStyles();
@@ -21,17 +23,22 @@ module.exports = class FileTreeSelectorHueRotatePlugin extends Plugin {
     this.registerDomEvent(document.body, 'mouseover', (evt) => this.handleFileTreeHover(evt));
     this.registerDomEvent(document.body, 'mouseout', (evt) => this.handleFileTreeLeave(evt));
 
-    // 4. Periodically monitor selection states to keep the active selection overlay perfectly aligned
-    this.registerInterval(
-      window.setInterval(() => this.trackActiveSelectionCoordinate(), 500)
-    );
+    // 4. High-frequency tracking loop (~60 frames per second / 16ms polling rate)
+    // This aggressively repaints position coordinates during scroll, resize, drag, or layout shifts
+    this.positionPollIntervalId = window.setInterval(() => this.highFrequencyPositionSync(), 16);
+    this.registerInterval(this.positionPollIntervalId);
+
+    // Force updates on structural view updates
     this.registerEvent(
-      this.app.workspace.on('layout-change', () => this.trackActiveSelectionCoordinate())
+      this.app.workspace.on('layout-change', () => this.highFrequencyPositionSync())
     );
   }
 
   onunload() {
     console.log('%c[Selector Hue Rotate]%c Stripping body overlay nodes...', 'color: #a4b0be; font-weight: bold;', 'color: default;');
+    if (this.positionPollIntervalId) {
+      clearInterval(this.positionPollIntervalId);
+    }
     if (this.hoverOverlayEl) this.hoverOverlayEl.remove();
     if (this.activeOverlayEl) this.activeOverlayEl.remove();
 
@@ -57,6 +64,12 @@ module.exports = class FileTreeSelectorHueRotatePlugin extends Plugin {
   snapOverlayToElement(element, overlayDOMNode) {
     const rect = element.getBoundingClientRect();
     
+    // Hide immediately if the dimensions collapse or element escapes viewport metrics
+    if (rect.width === 0 || rect.height === 0 || rect.top < 0 || rect.left < 0) {
+      overlayDOMNode.style.opacity = '0';
+      return;
+    }
+
     overlayDOMNode.style.width = rect.width + 'px';
     overlayDOMNode.style.height = rect.height + 'px';
     overlayDOMNode.style.top = rect.top + 'px';
@@ -64,39 +77,50 @@ module.exports = class FileTreeSelectorHueRotatePlugin extends Plugin {
     overlayDOMNode.style.opacity = '1';
   }
 
-  handleFileTreeHover(evt) {
-    const targetRow = evt.target.closest('.tree-item-self');
-    if (!targetRow) return;
+  // Evaluates whether a blocking UI element or modal is currently visible on screen
+  isDialogModalPresent() {
+    // Intercept Obsidian prompt commands, settings popups, menus, and notice alerts
+    const modalContainers = document.querySelectorAll(
+      '.modal-container, .popover, .menu, .notice-container, .dropdown, .suggestion-container'
+    );
+    
+    for (let i = 0; i < modalContainers.length; i++) {
+      const rect = modalContainers[i].getBoundingClientRect();
+      // Ensure the component is active and physically occupies viewport rendering space
+      if (rect.width > 0 && rect.height > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
 
-    // Reposition and trigger the fast hover animation overlay node instantly
-    this.snapOverlayToElement(targetRow, this.hoverOverlayEl);
+  // Master tracking coordinator executing at ~60fps
+  highFrequencyPositionSync() {
+    // FIX: Suppress and hide all border elements immediately if an external dialog popup box is active
+    if (this.isDialogModalPresent()) {
+      if (this.hoverOverlayEl) this.hoverOverlayEl.style.opacity = '0';
+      if (this.activeOverlayEl) this.activeOverlayEl.style.opacity = '0';
+      return;
+    }
 
-    // If this hovered row is also the active selection, match animations to avoid visual overlapping
-    if (targetRow.classList.contains('is-active')) {
-      this.hoverOverlayEl.classList.add('hue-rotate-fast-velocity');
-      this.activeOverlayEl.style.opacity = '0'; // Temporarily hide resting slow overlay while mouse is present
+    // A. Sync Hover State Elements
+    if (this.lastHoveredRow && document.body.contains(this.lastHoveredRow)) {
+      this.snapOverlayToElement(this.lastHoveredRow, this.hoverOverlayEl);
+      
+      // Manage overlapping priorities if the hovered row is also the selection node
+      if (this.lastHoveredRow.classList.contains('is-active')) {
+        this.hoverOverlayEl.classList.add('hue-rotate-fast-velocity');
+        if (this.activeOverlayEl) this.activeOverlayEl.style.opacity = '0';
+        return;
+      } else {
+        this.hoverOverlayEl.classList.remove('hue-rotate-fast-velocity');
+      }
     } else {
-      this.hoverOverlayEl.classList.remove('hue-rotate-fast-velocity');
+      if (this.hoverOverlayEl) this.hoverOverlayEl.style.opacity = '0';
     }
-  }
 
-  handleFileTreeLeave(evt) {
-    const targetRow = evt.target.closest('.tree-item-self');
-    if (!targetRow) return;
-
-    // Completely hide the hover frame when the mouse leaves the target row boundaries
-    if (this.hoverOverlayEl) {
-      this.hoverOverlayEl.style.opacity = '0';
-    }
-    
-    // Restore the slow resting selection overlay seamlessly
-    this.trackActiveSelectionCoordinate();
-  }
-
-  // Tracks the active .is-active file node to keep the selection border snapped during scrolls or view updates
-  trackActiveSelectionCoordinate() {
+    // B. Sync Active Selection Elements
     const activeSelection = document.querySelector('.tree-item-self.is-active');
-    
     if (!activeSelection) {
       if (this.activeOverlayEl) this.activeOverlayEl.style.opacity = '0';
       this.activeElementTracker = null;
@@ -104,15 +128,32 @@ module.exports = class FileTreeSelectorHueRotatePlugin extends Plugin {
     }
 
     this.activeElementTracker = activeSelection;
-    
-    // If the mouse is currently hovering over this exact selection element, let the hover handler dominate
-    const hoveredNode = document.querySelector('.tree-item-self:hover');
-    if (hoveredNode === activeSelection) {
-      this.activeOverlayEl.style.opacity = '0';
+
+    // Skip resting layer update if the hover tracking handler is currently active on this selection
+    if (this.lastHoveredRow === activeSelection) {
+      if (this.activeOverlayEl) this.activeOverlayEl.style.opacity = '0';
       return;
     }
 
     this.snapOverlayToElement(activeSelection, this.activeOverlayEl);
+  }
+
+  handleFileTreeHover(evt) {
+    const targetRow = evt.target.closest('.tree-item-self');
+    if (!targetRow) return;
+
+    this.lastHoveredRow = targetRow;
+    this.highFrequencyPositionSync();
+  }
+
+  handleFileTreeLeave(evt) {
+    const targetRow = evt.target.closest('.tree-item-self');
+    if (!targetRow) return;
+
+    if (this.lastHoveredRow === targetRow) {
+      this.lastHoveredRow = null;
+    }
+    this.highFrequencyPositionSync();
   }
 
   injectStyles() {
@@ -164,6 +205,6 @@ module.exports = class FileTreeSelectorHueRotatePlugin extends Plugin {
     `;
 
     document.head.appendChild(styleEl);
-    console.log('[Selector Hue Rotate] Hardware-insulated direct body-child floating overlays successfully registered.');
+    console.log('[Selector Hue Rotate] High-frequency floating overlays successfully registered.');
   }
 };
