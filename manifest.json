@@ -1,0 +1,11 @@
+{
+    "id": "file-tree-selector-hue-rotate",
+    "name": "!File Tree Selector Hue Rotate",
+    "version": "1.0.0",
+    "minAppVersion": "1.0.0",
+    "description": "Injects an animated color-rotating border overlay box around hovered or active items using direct, sequential border-color frames.",
+    "author": "AI Collaborator",
+    "authorUrl": "https://obsidian.md",
+    "isDesktopOnly": false
+  }
+  
