@@ -1,0 +1,21 @@
+{
+  "name": "op-file-tree-selector-hue-rotate",
+  "displayName": "File Tree Selector Hue Rotate",
+  "version": "1.0.0",
+  "description": "Injects an animated color-rotating border overlay box around hovered or active items using direct, sequential border-color frames.",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/markcrobbins2112/op-file-tree-selector-hue-rotate.git"
+  },
+  "author": "markcrobbins",
+  "publisher": "markcrobbins",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/markcrobbins2112/project/op-file-tree-selector-hue-rotate"
+  },
+  "homepage": "https://github.com/markcrobbins2112/op-file-tree-selector-hue-rotate#readme"
+}
