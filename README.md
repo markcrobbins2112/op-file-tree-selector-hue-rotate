@@ -1,7 +1,12 @@
+---
+title: README
+---
+
 <!-- # TEMPLATE: README.template.md -->
 
 
 <!-- markdownlint-disable MD013 -->
+
 # README
 
 Injects an animated color-rotating border overlay box around hovered or active items using direct, sequential border-color frames.
